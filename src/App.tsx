@@ -670,11 +670,13 @@ function Shell({
   screen,
   role,
   go,
+  displayName,
   children,
 }: {
   screen: Screen
   role: Role
   go: (screen: Screen) => void
+  displayName: string
   children: ReactNode
 }) {
   const [search, setSearch] = useState("")
@@ -762,10 +764,22 @@ function Shell({
               You retain the final word.
             </span>
           </div>
-          <button className="profile" onClick={() => go("account")}>
-            <i>AC</i>
+          <button
+            className={screen === "account" ? "profile active" : "profile"}
+            onClick={() => go("account")}
+            aria-label="Open profile settings"
+          >
+            <i>
+              {displayName
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
+            </i>
             <span>
-              Account settings<small>Profile & security</small>
+              {displayName}
+              <small>Profile & security</small>
             </span>
           </button>
         </div>
@@ -1445,6 +1459,16 @@ function Agreement({ go }: { go: (screen: Screen) => void }) {
 }
 
 function PartnershipRoom({ go }: { go: (screen: Screen) => void }) {
+  const roomTabs = [
+    "Overview",
+    "Agreement",
+    "Conversation",
+    "Deliverables",
+    "Payments",
+    "Changes",
+  ] as const
+  const [activeTab, setActiveTab] =
+    useState<typeof roomTabs[number]>("Conversation")
   const [message, setMessage] = useState("")
   const [messages, setMessages] = useState([
     "Aarav: I’ve uploaded the first Reel draft for review.",
@@ -1481,38 +1505,146 @@ function PartnershipRoom({ go }: { go: (screen: Screen) => void }) {
           </span>
         ))}
       </div>
-      <div className="room-tabs">
-        <b>Overview</b>
-        <b>Agreement</b>
-        <b className="active">Conversation</b>
-        <b>Deliverables</b>
-        <b>Payments</b>
-        <b>Changes</b>
+      <div className="room-tabs" role="tablist" aria-label="Partnership room">
+        {roomTabs.map((tab) => (
+          <button
+            className={activeTab === tab ? "active" : ""}
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            role="tab"
+            aria-selected={activeTab === tab}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
       <div className="split">
         <Card>
-          <h2>Live conversation</h2>
-          <p className="muted">
-            Shared between GlowSkin, Aarav and the campaign agent.
-          </p>
-          <div className="messages">
-            {messages.map((item, i) => (
-              <div
-                className={item.startsWith("You") ? "mine" : ""}
-                key={`${item}-${i}`}
-              >
-                {item}
+          {activeTab === "Overview" && (
+            <>
+              <h2>Partnership overview</h2>
+              <p>
+                GlowSkin and Aarav are producing a focused skincare campaign
+                under an accepted ₹70,000 agreement.
+              </p>
+              <div className="summary-list">
+                <div>
+                  <span>Current stage</span>
+                  <strong>Content production · Active</strong>
+                </div>
+                <div>
+                  <span>Next deadline</span>
+                  <strong>First Reel draft · 16 May</strong>
+                </div>
+                <div>
+                  <span>Campaign owner</span>
+                  <strong>Alex Carter · GlowSkin Global</strong>
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="composer">
-            <input
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Write a message or request a change..."
-            />
-            <Button onClick={send}>Send</Button>
-          </div>
+            </>
+          )}
+          {activeTab === "Agreement" && (
+            <>
+              <h2>Accepted agreement</h2>
+              <p>
+                2 Instagram Reels and 3 Stories, two revision rounds, tracked
+                links and a final performance report.
+              </p>
+              <div className="agreement-table">
+                <span>Draft approval</span>
+                <b>40% · ₹28,000</b>
+                <span>Publication</span>
+                <b>60% · ₹42,000</b>
+              </div>
+              <div className="match-actions">
+                <Button variant="secondary" onClick={() => go("agreement")}>
+                  View full agreement
+                </Button>
+              </div>
+            </>
+          )}
+          {activeTab === "Conversation" && (
+            <>
+              <h2>Live conversation</h2>
+              <p className="muted">
+                Shared between GlowSkin, Aarav and the campaign agent.
+              </p>
+              <div className="messages">
+                {messages.map((item, i) => (
+                  <div
+                    className={item.startsWith("You") ? "mine" : ""}
+                    key={`${item}-${i}`}
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+              <div className="composer">
+                <input
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") send()
+                  }}
+                  placeholder="Write a message or request a change..."
+                />
+                <Button onClick={send}>Send</Button>
+              </div>
+            </>
+          )}
+          {activeTab === "Deliverables" && (
+            <>
+              <h2>Deliverables</h2>
+              {[
+                ["Reel 01", "Draft uploaded", "Approval Needed"],
+                ["Reel 02", "In progress", "Active"],
+                ["Story set", "Not started", "Active"],
+              ].map(([name, detail, status]) => (
+                <div className="history" key={name}>
+                  <div>
+                    <strong>{name}</strong>
+                    <small>{detail}</small>
+                  </div>
+                  <Badge
+                    tone={status === "Approval Needed" ? "warning" : "neutral"}
+                  >
+                    {status}
+                  </Badge>
+                </div>
+              ))}
+              <Button onClick={() => go("approvals")}>Review draft</Button>
+            </>
+          )}
+          {activeTab === "Payments" && (
+            <>
+              <h2>Payment schedule</h2>
+              <div className="summary-list">
+                <div>
+                  <span>Draft approval</span>
+                  <strong>₹28,000 · Awaiting approval</strong>
+                </div>
+                <div>
+                  <span>Publication</span>
+                  <strong>₹42,000 · Scheduled</strong>
+                </div>
+                <div>
+                  <span>Total partnership fee</span>
+                  <strong>₹70,000</strong>
+                </div>
+              </div>
+            </>
+          )}
+          {activeTab === "Changes" && (
+            <>
+              <Badge tone="warning">Approval Needed</Badge>
+              <h2>Additional deliverables requested</h2>
+              <p>
+                Two cutdowns were requested outside the accepted agreement.
+                Review the revised scope before work continues.
+              </p>
+              <Button onClick={() => go("approvals")}>Review change</Button>
+            </>
+          )}
         </Card>
         <div className="side-stack">
           <Card className="assistant-card">
@@ -1608,10 +1740,7 @@ function Approvals({ go }: { go: (screen: Screen) => void }) {
                 >
                   Reject
                 </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => setDecision("Discussion started")}
-                >
+                <Button variant="secondary" onClick={() => go("room")}>
                   Discuss
                 </Button>
               </div>
@@ -1828,6 +1957,15 @@ function Application({
   const [note, setNote] = useState(
     "I’d love to create a practical, ingredient-led story for this launch.",
   )
+  const [error, setError] = useState("")
+  const submitApplication = () => {
+    if (!note.trim()) {
+      setError("Add a short note before sending your application.")
+      return
+    }
+    setError("")
+    setSubmitted(true)
+  }
   if (submitted)
     return (
       <div className="success-state">
@@ -1853,29 +1991,80 @@ function Application({
       />
       <Card className="application-form">
         <Field label="Your note" value={note} onChange={setNote} multiline />
+        {error && (
+          <div className="login-error" role="alert">
+            {error}
+          </div>
+        )}
         <div className="application-summary">
           <strong>Profile shared</strong>
           <span>
             Audience summary · Recent performance · Availability · Pricing
           </span>
         </div>
-        <Button onClick={() => setSubmitted(true)}>Send Application</Button>
+        <Button onClick={submitApplication}>Send Application</Button>
       </Card>
     </>
   )
 }
 
-function AccountSettings({ logout }: { logout: () => Promise<void> }) {
+function AccountSettings({
+  logout,
+  onProfileUpdated,
+}: {
+  logout: () => Promise<void>
+  onProfileUpdated: (name: string) => void
+}) {
   const [email, setEmail] = useState("")
+  const [fullName, setFullName] = useState("")
+  const [company, setCompany] = useState("")
+  const [location, setLocation] = useState("")
+  const [bio, setBio] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(false)
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
+  const [profileError, setProfileError] = useState("")
+  const [profileMessage, setProfileMessage] = useState("")
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""))
+    supabase.auth.getUser().then(({ data }) => {
+      const metadata = data.user?.user_metadata ?? {}
+      setEmail(data.user?.email ?? "")
+      setFullName(metadata.full_name ?? "")
+      setCompany(metadata.company ?? "")
+      setLocation(metadata.location ?? "")
+      setBio(metadata.bio ?? "")
+    })
   }, [])
+
+  const saveProfile = async (event: FormEvent) => {
+    event.preventDefault()
+    setProfileError("")
+    setProfileMessage("")
+    if (!fullName.trim()) {
+      setProfileError("Enter your full name.")
+      return
+    }
+    setProfileLoading(true)
+    const { error: authError } = await supabase.auth.updateUser({
+      data: {
+        full_name: fullName.trim(),
+        company: company.trim(),
+        location: location.trim(),
+        bio: bio.trim(),
+      },
+    })
+    setProfileLoading(false)
+    if (authError) {
+      setProfileError(authError.message)
+      return
+    }
+    onProfileUpdated(fullName.trim())
+    setProfileMessage("Your profile has been updated.")
+  }
 
   const changePassword = async (event: FormEvent) => {
     event.preventDefault()
@@ -1910,53 +2099,106 @@ function AccountSettings({ logout }: { logout: () => Promise<void> }) {
         subtitle="Manage your sign-in details and keep your Mystique account secure."
       />
       <div className="account-layout">
-        <Card>
-          <div className="card-title">
-            <div>
-              <h2>Change password</h2>
-              <p>Choose a unique password you do not use elsewhere.</p>
-            </div>
-            <Badge tone="success">Secure account</Badge>
-          </div>
-          <form className="account-form" onSubmit={changePassword}>
-            <Field
-              label="Account email"
-              value={email}
-              onChange={setEmail}
-              type="email"
-              readOnly
-            />
-            <Field
-              label="New password"
-              value={password}
-              onChange={setPassword}
-              placeholder="At least 8 characters"
-              type="password"
-            />
-            <Field
-              label="Confirm new password"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              placeholder="Repeat your new password"
-              type="password"
-            />
-            {error && (
-              <div className="login-error" role="alert">
-                {error}
+        <div className="side-stack">
+          <Card>
+            <div className="card-title">
+              <div>
+                <h2>Profile settings</h2>
+                <p>Keep your partnership identity accurate and current.</p>
               </div>
-            )}
-            {message && (
-              <div className="login-success" role="status">
-                {message}
-              </div>
-            )}
-            <div className="account-actions">
-              <Button type="submit" disabled={loading}>
-                {loading ? "Updating..." : "Change password"}
-              </Button>
+              <Badge>Account profile</Badge>
             </div>
-          </form>
-        </Card>
+            <form className="account-form" onSubmit={saveProfile}>
+              <Field
+                label="Full name"
+                value={fullName}
+                onChange={setFullName}
+                placeholder="Your full name"
+              />
+              <Field
+                label="Company or creator name"
+                value={company}
+                onChange={setCompany}
+                placeholder="Your business or public name"
+              />
+              <Field
+                label="Location"
+                value={location}
+                onChange={setLocation}
+                placeholder="City, country"
+              />
+              <Field
+                label="Short bio"
+                value={bio}
+                onChange={setBio}
+                placeholder="What should potential partners know?"
+                multiline
+              />
+              {profileError && (
+                <div className="login-error" role="alert">
+                  {profileError}
+                </div>
+              )}
+              {profileMessage && (
+                <div className="login-success" role="status">
+                  {profileMessage}
+                </div>
+              )}
+              <div className="account-actions">
+                <Button type="submit" disabled={profileLoading}>
+                  {profileLoading ? "Saving..." : "Save profile"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+          <Card>
+            <div className="card-title">
+              <div>
+                <h2>Change password</h2>
+                <p>Choose a unique password you do not use elsewhere.</p>
+              </div>
+              <Badge tone="success">Secure account</Badge>
+            </div>
+            <form className="account-form" onSubmit={changePassword}>
+              <Field
+                label="Account email"
+                value={email}
+                onChange={setEmail}
+                type="email"
+                readOnly
+              />
+              <Field
+                label="New password"
+                value={password}
+                onChange={setPassword}
+                placeholder="At least 8 characters"
+                type="password"
+              />
+              <Field
+                label="Confirm new password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                placeholder="Repeat your new password"
+                type="password"
+              />
+              {error && (
+                <div className="login-error" role="alert">
+                  {error}
+                </div>
+              )}
+              {message && (
+                <div className="login-success" role="status">
+                  {message}
+                </div>
+              )}
+              <div className="account-actions">
+                <Button type="submit" disabled={loading}>
+                  {loading ? "Updating..." : "Change password"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
         <div className="side-stack">
           <Card className="insight">
             <b>MYSTIQUE · Account security</b>
@@ -1983,6 +2225,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("login")
   const [authReady, setAuthReady] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
+  const [displayName, setDisplayName] = useState("Mystique Member")
   const [passwordRecovery, setPasswordRecovery] = useState(
     () =>
       window.location.hash.includes("type=recovery") ||
@@ -2004,6 +2247,12 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const signedIn = Boolean(data.session)
+      const user = data.session?.user
+      setDisplayName(
+        user?.user_metadata?.full_name ??
+          user?.email?.split("@")[0] ??
+          "Mystique Member",
+      )
       setAuthenticated(signedIn)
       setScreen((current) =>
         signedIn && current === "login" ? "landing" : current,
@@ -2013,6 +2262,13 @@ export default function App() {
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       const signedIn = Boolean(session)
+      if (session?.user) {
+        setDisplayName(
+          session.user.user_metadata?.full_name ??
+            session.user.email?.split("@")[0] ??
+            "Mystique Member",
+        )
+      }
       setAuthenticated(signedIn)
       if (event === "PASSWORD_RECOVERY") {
         setPasswordRecovery(true)
@@ -2103,13 +2359,15 @@ export default function App() {
       page = <Application campaign={campaign} go={setScreen} />
       break
     case "account":
-      page = <AccountSettings logout={logout} />
+      page = (
+        <AccountSettings logout={logout} onProfileUpdated={setDisplayName} />
+      )
       break
     default:
       page = <Dashboard go={setScreen} />
   }
   return (
-    <Shell screen={screen} role={role} go={setScreen}>
+    <Shell screen={screen} role={role} go={setScreen} displayName={displayName}>
       {page}
     </Shell>
   )
