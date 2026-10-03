@@ -16,6 +16,14 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('@supabase')) return 'supabase'
+            if (id.includes('node_modules/react')) return 'react'
+          },
+        },
+      },
     },
     plugins: [
 react(),

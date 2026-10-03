@@ -6,9 +6,10 @@ import {
   useRef,
   useState,
 } from "react"
+import { projectId, publicAnonKey } from "../utils/supabase/info"
 import { supabase } from "./lib/supabase"
 
-type Screen = "login" | "landing" | "dashboard" | "create" | "matches" | "partner" | "agreement" | "room" | "approvals" | "campaigns" | "campaign-detail" | "application"
+type Screen = "login" | "landing" | "dashboard" | "create" | "matches" | "partner" | "agreement" | "room" | "approvals" | "campaigns" | "campaign-detail" | "application" | "account"
 
 type Role = "business" | "partner"
 type Tone = "success" | "warning" | "neutral" | "danger"
@@ -109,6 +110,17 @@ const match = (fit: number[]) =>
 const matchLabel = (score: number) =>
   score >= 92 ? "Strong Match" : score >= 86 ? "Good Match" : "Needs Review"
 
+function downloadTextFile(filename: string, content: string) {
+  const url = URL.createObjectURL(
+    new Blob([content], { type: "text/plain;charset=utf-8" }),
+  )
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 function Button({
   children,
   onClick,
@@ -141,6 +153,7 @@ function Field({
   placeholder,
   multiline,
   type = "text",
+  readOnly = false,
 }: {
   label: string
   value: string
@@ -148,6 +161,7 @@ function Field({
   placeholder?: string
   multiline?: boolean
   type?: string
+  readOnly?: boolean
 }) {
   return (
     <label className="field">
@@ -163,6 +177,7 @@ function Field({
           type={type}
           value={value}
           placeholder={placeholder}
+          readOnly={readOnly}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
@@ -262,6 +277,18 @@ function Login({
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
   const [verificationPending, setVerificationPending] = useState(false)
+  const [googleEnabled, setGoogleEnabled] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    fetch(`https://${projectId}.supabase.co/auth/v1/settings`, {
+      headers: { apikey: publicAnonKey },
+    })
+      .then((response) => response.json())
+      .then((settings: { external?: { google?: boolean } }) =>
+        setGoogleEnabled(Boolean(settings.external?.google)),
+      )
+      .catch(() => setGoogleEnabled(null))
+  }, [])
 
   const changeMode = (nextMode: "login" | "register" | "forgot") => {
     setMode(nextMode)
@@ -347,7 +374,17 @@ function Login({
       })
       setLoading(false)
       if (authError) {
-        setError(authError.message)
+        setError(
+          authError.message.toLowerCase().includes("already registered")
+            ? "An account with this email already exists. Sign in or reset your password."
+            : authError.message,
+        )
+        return
+      }
+      if (data.user?.identities?.length === 0) {
+        setError(
+          "An account with this email already exists. Sign in or reset your password.",
+        )
         return
       }
       if (!data.session) {
@@ -556,10 +593,17 @@ function Login({
               <Button
                 variant="secondary"
                 onClick={continueWithGoogle}
-                disabled={loading}
+                disabled={loading || googleEnabled === false}
               >
-                Continue with Google
+                {googleEnabled === false
+                  ? "Google sign-in unavailable"
+                  : "Continue with Google"}
               </Button>
+              {googleEnabled === false && (
+                <small>
+                  Enable Google under Supabase Authentication providers.
+                </small>
+              )}
             </div>
           </>
         )}
@@ -626,28 +670,58 @@ function Shell({
   screen,
   role,
   go,
-  logout,
   children,
 }: {
   screen: Screen
   role: Role
   go: (screen: Screen) => void
-  logout: () => void
   children: ReactNode
 }) {
+  const [search, setSearch] = useState("")
   const businessNav: [Screen, string, keyof typeof icons][] = [
     ["dashboard", "Dashboard", "dashboard"],
     ["create", "Campaigns", "campaigns"],
     ["matches", "AI Matches", "matches"],
     ["room", "Partnership Rooms", "rooms"],
     ["approvals", "Governance", "governance"],
+    ["account", "Account", "governance"],
   ]
   const partnerNav: [Screen, string, keyof typeof icons][] = [
     ["campaigns", "Campaigns for you", "matches"],
     ["application", "Applications", "campaigns"],
     ["room", "Partnership Rooms", "rooms"],
+    ["account", "Account", "governance"],
   ]
   const nav = role === "business" ? businessNav : partnerNav
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault()
+    const query = search.trim().toLowerCase()
+    if (!query) return
+    if (
+      query.includes("account") ||
+      query.includes("password") ||
+      query.includes("setting")
+    )
+      go("account")
+    else if (query.includes("approval") || query.includes("governance"))
+      go(role === "business" ? "approvals" : "room")
+    else if (
+      query.includes("agreement") ||
+      query.includes("room") ||
+      query.includes("deliverable")
+    )
+      go("room")
+    else if (
+      query.includes("partner") ||
+      query.includes("creator") ||
+      query.includes("match")
+    )
+      go(role === "business" ? "matches" : "campaigns")
+    else if (query.includes("campaign"))
+      go(role === "business" ? "create" : "campaigns")
+    else go(role === "business" ? "dashboard" : "campaigns")
+    setSearch("")
+  }
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -688,20 +762,25 @@ function Shell({
               You retain the final word.
             </span>
           </div>
-          <button className="profile" onClick={logout}>
+          <button className="profile" onClick={() => go("account")}>
             <i>AC</i>
             <span>
-              Alex Carter<small>Brand Director</small>
+              Account settings<small>Profile & security</small>
             </span>
           </button>
         </div>
       </aside>
       <div className="main-column">
         <header className="topbar">
-          <div className="search">
-            <img src={`${A}/98894.svg`} alt="" /> Search campaigns, partners,
-            agreements...
-          </div>
+          <form className="search" onSubmit={submitSearch}>
+            <img src={`${A}/98894.svg`} alt="" />
+            <input
+              aria-label="Search Mystique"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search campaigns, partners, agreements..."
+            />
+          </form>
           <div className="top-actions">
             <Badge>Campaign Agent ready</Badge>
             {role === "business" && (
@@ -1033,7 +1112,9 @@ function Matches({
           title="Find undeniable resonance"
           subtitle="Curated for commercial outcomes. Ranked by evidence, not follower counts."
         />
-        <Button variant="secondary">Edit matching brief</Button>
+        <Button variant="secondary" onClick={() => go("create")}>
+          Edit matching brief
+        </Button>
       </div>
       <div className="filter-row">
         <Badge>Creators</Badge>
@@ -1092,15 +1173,32 @@ function Matches({
 
 function PartnerDetail({
   partner,
-  connectInstagram,
-  connected,
+  requestInstagram,
+  connectionRequested,
   go,
 }: {
   partner: typeof partners[number]
-  connectInstagram: () => void
-  connected: boolean
+  requestInstagram: () => void
+  connectionRequested: boolean
   go: (screen: Screen) => void
 }) {
+  const exportProfile = () => {
+    const content = [
+      "Mystique Partner Profile",
+      partner.name,
+      partner.subtitle,
+      `Compatibility: ${match(partner.fit)}%`,
+      `Package: ${partner.budget}`,
+      `Why recommended: ${partner.why}`,
+      "",
+      "Evidence",
+      ...partner.proof.map((item) => `- ${item}`),
+    ].join("\n")
+    downloadTextFile(
+      `${partner.name.toLowerCase().replace(/\s+/g, "-")}-mystique-profile.txt`,
+      content,
+    )
+  }
   return (
     <>
       <div className="heading-row">
@@ -1109,7 +1207,9 @@ function PartnerDetail({
           title="The evidence behind the influence"
           subtitle="Useful profile and performance information, without inflated complexity."
         />
-        <Button variant="secondary">Export profile</Button>
+        <Button variant="secondary" onClick={exportProfile}>
+          Export profile
+        </Button>
       </div>
       <Card className="profile-hero">
         <div className="portrait large">
@@ -1196,15 +1296,17 @@ function PartnerDetail({
           <Card>
             <h2>Instagram</h2>
             <p>
-              {connected
-                ? "Connected. Live profile data can be displayed here when the Instagram API is configured."
+              {connectionRequested
+                ? "Instagram authentication is not configured yet. No profile data has been imported."
                 : "Connect an account to bring in available profile and performance information."}
             </p>
             <Button
-              variant={connected ? "secondary" : "primary"}
-              onClick={connectInstagram}
+              variant={connectionRequested ? "secondary" : "primary"}
+              onClick={requestInstagram}
             >
-              {connected ? "Instagram Connected" : "Connect Instagram"}
+              {connectionRequested
+                ? "Instagram setup required"
+                : "Connect Instagram"}
             </Button>
           </Card>
           <Card className="insight">
@@ -1233,7 +1335,9 @@ function Agreement({ go }: { go: (screen: Screen) => void }) {
           title="Creator partnership agreement"
           subtitle="GlowSkin × Aarav Sharma · A clear, editable agreement."
         />
-        <Button variant="secondary">Download PDF</Button>
+        <Button variant="secondary" onClick={() => window.print()}>
+          Download PDF
+        </Button>
       </div>
       <div className="agreement-status">
         {stages.map((stage) => (
@@ -1446,7 +1550,7 @@ function PartnershipRoom({ go }: { go: (screen: Screen) => void }) {
   )
 }
 
-function Approvals() {
+function Approvals({ go }: { go: (screen: Screen) => void }) {
   const [decision, setDecision] = useState("")
   return (
     <>
@@ -1540,7 +1644,9 @@ function Approvals() {
             Reel draft omits the paid partnership label. Return it for
             correction before publication.
           </p>
-          <Button variant="secondary">Open deliverable</Button>
+          <Button variant="secondary" onClick={() => go("room")}>
+            Open deliverable
+          </Button>
         </Card>
       </div>
     </>
@@ -1550,9 +1656,13 @@ function Approvals() {
 function CampaignRecommendations({
   go,
   select,
+  connectionRequested,
+  requestInstagram,
 }: {
   go: (screen: Screen) => void
   select: (id: string) => void
+  connectionRequested: boolean
+  requestInstagram: () => void
 }) {
   return (
     <>
@@ -1562,17 +1672,28 @@ function CampaignRecommendations({
           title="Campaigns that fit your work"
           subtitle="The same matching intelligence, looking from your side of the partnership."
         />
-        <Button variant="secondary">Update preferences</Button>
       </div>
       <Card className="instagram-strip">
         <div>
-          <h2>Connect Instagram</h2>
+          <h2>
+            {connectionRequested
+              ? "Instagram setup required"
+              : "Connect Instagram"}
+          </h2>
           <p>
-            Bring in available profile and performance information when the API
-            is connected.
+            {connectionRequested
+              ? "No Instagram data has been imported. Configure the backend integration to enable connection."
+              : "Bring in available profile and performance information when the API is connected."}
           </p>
         </div>
-        <Button>Connect Instagram</Button>
+        <Button
+          variant={connectionRequested ? "secondary" : "primary"}
+          onClick={requestInstagram}
+        >
+          {connectionRequested
+            ? "Instagram setup required"
+            : "Connect Instagram"}
+        </Button>
       </Card>
       <div className="campaign-recs">
         {campaigns.map((campaign) => {
@@ -1744,6 +1865,120 @@ function Application({
   )
 }
 
+function AccountSettings({ logout }: { logout: () => Promise<void> }) {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [message, setMessage] = useState("")
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""))
+  }, [])
+
+  const changePassword = async (event: FormEvent) => {
+    event.preventDefault()
+    setError("")
+    setMessage("")
+    if (password.length < 8) {
+      setError("Use a password of at least 8 characters.")
+      return
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.")
+      return
+    }
+
+    setLoading(true)
+    const { error: authError } = await supabase.auth.updateUser({ password })
+    setLoading(false)
+    if (authError) {
+      setError(authError.message)
+      return
+    }
+    setPassword("")
+    setConfirmPassword("")
+    setMessage("Your Mystique password has been changed successfully.")
+  }
+
+  return (
+    <>
+      <Heading
+        eyebrow="ACCOUNT / SECURITY"
+        title="Account settings"
+        subtitle="Manage your sign-in details and keep your Mystique account secure."
+      />
+      <div className="account-layout">
+        <Card>
+          <div className="card-title">
+            <div>
+              <h2>Change password</h2>
+              <p>Choose a unique password you do not use elsewhere.</p>
+            </div>
+            <Badge tone="success">Secure account</Badge>
+          </div>
+          <form className="account-form" onSubmit={changePassword}>
+            <Field
+              label="Account email"
+              value={email}
+              onChange={setEmail}
+              type="email"
+              readOnly
+            />
+            <Field
+              label="New password"
+              value={password}
+              onChange={setPassword}
+              placeholder="At least 8 characters"
+              type="password"
+            />
+            <Field
+              label="Confirm new password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              placeholder="Repeat your new password"
+              type="password"
+            />
+            {error && (
+              <div className="login-error" role="alert">
+                {error}
+              </div>
+            )}
+            {message && (
+              <div className="login-success" role="status">
+                {message}
+              </div>
+            )}
+            <div className="account-actions">
+              <Button type="submit" disabled={loading}>
+                {loading ? "Updating..." : "Change password"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+        <div className="side-stack">
+          <Card className="insight">
+            <b>MYSTIQUE · Account security</b>
+            <h3>Your session is protected</h3>
+            <p>
+              Password updates are handled securely by Supabase Auth. Mystique
+              never stores your password.
+            </p>
+          </Card>
+          <Card>
+            <h2>Sign out</h2>
+            <p>End your current Mystique session on this device.</p>
+            <Button variant="secondary" onClick={logout}>
+              Sign out
+            </Button>
+          </Card>
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("login")
   const [authReady, setAuthReady] = useState(false)
@@ -1756,7 +1991,7 @@ export default function App() {
   const [role, setRole] = useState<Role>("business")
   const [selectedPartner, setSelectedPartner] = useState("aarav")
   const [selectedCampaign, setSelectedCampaign] = useState("radiance")
-  const [instagramConnected, setInstagramConnected] = useState(false)
+  const [instagramSetupRequested, setInstagramSetupRequested] = useState(false)
   const partner = useMemo(
     () => partners.find((item) => item.id === selectedPartner) ?? partners[0],
     [selectedPartner],
@@ -1836,8 +2071,8 @@ export default function App() {
       page = (
         <PartnerDetail
           partner={partner}
-          connected={instagramConnected}
-          connectInstagram={() => setInstagramConnected(!instagramConnected)}
+          connectionRequested={instagramSetupRequested}
+          requestInstagram={() => setInstagramSetupRequested(true)}
           go={setScreen}
         />
       )
@@ -1849,11 +2084,16 @@ export default function App() {
       page = <PartnershipRoom go={setScreen} />
       break
     case "approvals":
-      page = <Approvals />
+      page = <Approvals go={setScreen} />
       break
     case "campaigns":
       page = (
-        <CampaignRecommendations go={setScreen} select={setSelectedCampaign} />
+        <CampaignRecommendations
+          go={setScreen}
+          select={setSelectedCampaign}
+          connectionRequested={instagramSetupRequested}
+          requestInstagram={() => setInstagramSetupRequested(true)}
+        />
       )
       break
     case "campaign-detail":
@@ -1862,11 +2102,14 @@ export default function App() {
     case "application":
       page = <Application campaign={campaign} go={setScreen} />
       break
+    case "account":
+      page = <AccountSettings logout={logout} />
+      break
     default:
       page = <Dashboard go={setScreen} />
   }
   return (
-    <Shell screen={screen} role={role} go={setScreen} logout={logout}>
+    <Shell screen={screen} role={role} go={setScreen}>
       {page}
     </Shell>
   )
