@@ -243,9 +243,17 @@ function Brand({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function Login() {
+function Login({
+  recovery = false,
+  onRecoveryComplete,
+}: {
+  recovery?: boolean
+  onRecoveryComplete?: () => void
+}) {
   const formRef = useRef<HTMLFormElement>(null)
-  const [mode, setMode] = useState<"login" | "register">("login")
+  const [mode, setMode] = useState<"login" | "register" | "forgot" | "reset">(
+    recovery ? "reset" : "login",
+  )
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -253,11 +261,13 @@ function Login() {
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
+  const [verificationPending, setVerificationPending] = useState(false)
 
-  const changeMode = (nextMode: "login" | "register") => {
+  const changeMode = (nextMode: "login" | "register" | "forgot") => {
     setMode(nextMode)
     setError("")
     setMessage("")
+    setVerificationPending(false)
     requestAnimationFrame(() =>
       formRef.current?.querySelector("input")?.focus(),
     )
@@ -267,6 +277,49 @@ function Login() {
     event.preventDefault()
     setError("")
     setMessage("")
+
+    if (mode === "forgot") {
+      if (!email.includes("@")) {
+        setError("Enter the email address connected to your Mystique account.")
+        return
+      }
+      setLoading(true)
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(
+        email,
+        { redirectTo: window.location.origin },
+      )
+      setLoading(false)
+      if (authError) {
+        setError(authError.message)
+        return
+      }
+      setMessage(
+        "Password reset email sent. Check your inbox, spam and promotions folders.",
+      )
+      return
+    }
+
+    if (mode === "reset") {
+      if (password.length < 8 || password !== confirmPassword) {
+        setError(
+          password.length < 8
+            ? "Use a password of at least 8 characters."
+            : "Passwords do not match.",
+        )
+        return
+      }
+      setLoading(true)
+      const { error: authError } = await supabase.auth.updateUser({ password })
+      setLoading(false)
+      if (authError) {
+        setError(authError.message)
+        return
+      }
+      setMessage("Your password has been updated. You can now sign in.")
+      await supabase.auth.signOut()
+      onRecoveryComplete?.()
+      return
+    }
 
     if (!email.includes("@") || password.length < 8) {
       setError("Enter a valid email and a password of at least 8 characters.")
@@ -298,8 +351,9 @@ function Login() {
         return
       }
       if (!data.session) {
+        setVerificationPending(true)
         setMessage(
-          "Account created. Check your email to verify your account, then sign in.",
+          "Account created. Check your inbox and spam folder for the verification email.",
         )
         return
       }
@@ -312,7 +366,36 @@ function Login() {
       password,
     })
     setLoading(false)
-    if (authError) setError(authError.message)
+    if (authError) {
+      setError(authError.message)
+      if (authError.message.toLowerCase().includes("email not confirmed")) {
+        setVerificationPending(true)
+      }
+    }
+  }
+
+  const resendVerification = async () => {
+    if (!email.includes("@")) {
+      setError("Enter the email address you registered with.")
+      return
+    }
+    setError("")
+    setMessage("")
+    setLoading(true)
+    const { error: authError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    })
+    setLoading(false)
+    if (authError) {
+      setError(authError.message)
+      return
+    }
+    setVerificationPending(true)
+    setMessage(
+      "Verification email resent. Check your inbox, spam and promotions folders.",
+    )
   }
 
   const continueWithGoogle = async () => {
@@ -336,31 +419,45 @@ function Login() {
         <Brand />
       </div>
       <Card className="login-card">
-        <div
-          className="auth-tabs"
-          role="tablist"
-          aria-label="Authentication mode"
-        >
-          <Button
-            variant={mode === "login" ? "primary" : "quiet"}
-            onClick={() => changeMode("login")}
+        {mode !== "reset" && (
+          <div
+            className="auth-tabs"
+            role="tablist"
+            aria-label="Authentication mode"
           >
-            Sign in
-          </Button>
-          <Button
-            variant={mode === "register" ? "primary" : "quiet"}
-            onClick={() => changeMode("register")}
-          >
-            Create account
-          </Button>
-        </div>
+            <Button
+              variant={mode === "login" ? "primary" : "quiet"}
+              onClick={() => changeMode("login")}
+            >
+              Sign in
+            </Button>
+            <Button
+              variant={mode === "register" ? "primary" : "quiet"}
+              onClick={() => changeMode("register")}
+            >
+              Create account
+            </Button>
+          </div>
+        )}
         <div className="login-heading">
           <Badge>PARTNERSHIP INTELLIGENCE</Badge>
-          <h1>{mode === "login" ? "Welcome back" : "Join Mystique"}</h1>
+          <h1>
+            {mode === "login"
+              ? "Welcome back"
+              : mode === "register"
+                ? "Join Mystique"
+                : mode === "forgot"
+                  ? "Reset your password"
+                  : "Choose a new password"}
+          </h1>
           <p>
             {mode === "login"
               ? "Sign in to continue to your partnerships."
-              : "Create your account to start building better partnerships."}
+              : mode === "register"
+                ? "Create your account to start building better partnerships."
+                : mode === "forgot"
+                  ? "We’ll send a secure recovery link to your email."
+                  : "Enter a new password for your Mystique account."}
           </p>
         </div>
         <form ref={formRef} className="login-form" onSubmit={submit}>
@@ -372,21 +469,25 @@ function Login() {
               placeholder="Your full name"
             />
           )}
-          <Field
-            label="Work email"
-            value={email}
-            onChange={setEmail}
-            placeholder="you@company.com"
-            type="email"
-          />
-          <Field
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            placeholder="At least 8 characters"
-            type="password"
-          />
-          {mode === "register" && (
+          {mode !== "reset" && (
+            <Field
+              label="Work email"
+              value={email}
+              onChange={setEmail}
+              placeholder="you@company.com"
+              type="email"
+            />
+          )}
+          {mode !== "forgot" && (
+            <Field
+              label={mode === "reset" ? "New password" : "Password"}
+              value={password}
+              onChange={setPassword}
+              placeholder="At least 8 characters"
+              type="password"
+            />
+          )}
+          {(mode === "register" || mode === "reset") && (
             <Field
               label="Confirm password"
               value={confirmPassword}
@@ -410,21 +511,58 @@ function Login() {
               ? "Please wait..."
               : mode === "login"
                 ? "Sign in"
-                : "Create account"}
+                : mode === "register"
+                  ? "Create account"
+                  : mode === "forgot"
+                    ? "Send recovery email"
+                    : "Update password"}
           </Button>
         </form>
-        <div className="login-divider">
-          <span>or continue with</span>
-        </div>
-        <div className="google-setup">
-          <Button
-            variant="secondary"
-            onClick={continueWithGoogle}
-            disabled={loading}
-          >
-            Continue with Google
-          </Button>
-        </div>
+        {mode === "login" && (
+          <div className="forgot-action">
+            <Button variant="quiet" onClick={() => changeMode("forgot")}>
+              Forgot password?
+            </Button>
+          </div>
+        )}
+        {mode === "forgot" && (
+          <div className="forgot-action">
+            <Button variant="quiet" onClick={() => changeMode("login")}>
+              Back to sign in
+            </Button>
+          </div>
+        )}
+        {verificationPending && (
+          <div className="verification-help">
+            <p>
+              Still no email? Delivery can take a few minutes. Confirm the
+              address above, then request a new link.
+            </p>
+            <Button
+              variant="secondary"
+              onClick={resendVerification}
+              disabled={loading}
+            >
+              Resend verification email
+            </Button>
+          </div>
+        )}
+        {mode !== "reset" && mode !== "forgot" && (
+          <>
+            <div className="login-divider">
+              <span>or continue with</span>
+            </div>
+            <div className="google-setup">
+              <Button
+                variant="secondary"
+                onClick={continueWithGoogle}
+                disabled={loading}
+              >
+                Continue with Google
+              </Button>
+            </div>
+          </>
+        )}
         <p className="login-terms">
           By continuing, you agree to Mystique’s Terms and Privacy Policy.
         </p>
@@ -1610,6 +1748,11 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("login")
   const [authReady, setAuthReady] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    () =>
+      window.location.hash.includes("type=recovery") ||
+      window.location.search.includes("type=recovery"),
+  )
   const [role, setRole] = useState<Role>("business")
   const [selectedPartner, setSelectedPartner] = useState("aarav")
   const [selectedCampaign, setSelectedCampaign] = useState("radiance")
@@ -1633,9 +1776,15 @@ export default function App() {
       setAuthReady(true)
     })
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       const signedIn = Boolean(session)
       setAuthenticated(signedIn)
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true)
+        setScreen("login")
+        setAuthReady(true)
+        return
+      }
       setScreen((current) => {
         if (!signedIn) return "login"
         return current === "login" ? "landing" : current
@@ -1665,6 +1814,10 @@ export default function App() {
           <p>Confirming your secure session...</p>
         </Card>
       </main>
+    )
+  if (passwordRecovery)
+    return (
+      <Login recovery onRecoveryComplete={() => setPasswordRecovery(false)} />
     )
   if (!authenticated || screen === "login") return <Login />
   if (screen === "landing") return <Landing onChoose={choose} />

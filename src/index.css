@@ -74,6 +74,8 @@ p{color:var(--muted);line-height:1.55}
 .login-form{display:flex;flex-direction:column;gap:17px}.login-form .button{width:100%;margin-top:4px}
 .login-error{color:var(--red);background:var(--red-bg);border-radius:8px;padding:10px 12px;font-size:10px;line-height:1.5}
 .login-success{color:var(--green);background:var(--green-bg);border-radius:8px;padding:10px 12px;font-size:10px;line-height:1.5}
+.verification-help{margin-top:14px;padding:13px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}.verification-help p{font-size:10px;margin-bottom:10px}.verification-help .button{width:100%}
+.forgot-action{display:flex;justify-content:flex-end;margin-top:5px}.forgot-action .button{font-size:10px}
 .login-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:10px;margin:22px 0}.login-divider:before,.login-divider:after{content:"";height:1px;background:var(--line);flex:1}
 .google-button{min-height:44px;display:flex;justify-content:center;overflow:hidden}
 .google-setup{display:flex;flex-direction:column;gap:8px;text-align:center}.google-setup .button{width:100%}.google-setup small{color:var(--muted);font-size:9px}
